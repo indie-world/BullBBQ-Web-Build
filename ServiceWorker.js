@@ -1,33 +1,62 @@
 const cacheName = "DefaultCompany-Bull3D_v0.3-0.2";
 const contentToCache = [
-    "Build/BullBBQ Web Build.loader.js",
-    "Build/BullBBQ Web Build.framework.js.unityweb",
-    "Build/BullBBQ Web Build.data.unityweb",
-    "Build/BullBBQ Web Build.wasm.unityweb",
+    "Build/webgl_1.3.1.loader.js",
+    "Build/webgl_1.3.1.framework.js.unityweb",
+    "Build/webgl_1.3.1.data.unityweb",
+    "Build/webgl_1.3.1.wasm.unityweb",
     "TemplateData/style.css"
-
 ];
 
 self.addEventListener('install', function (e) {
     console.log('[Service Worker] Install');
-    
+    self.skipWaiting();
+
     e.waitUntil((async function () {
       const cache = await caches.open(cacheName);
-      console.log('[Service Worker] Caching all: app shell and content');
-      await cache.addAll(contentToCache);
+      // Pre-cache files individually so a single failed request can't
+      // abort the install and leave the SW in a broken state.
+      await Promise.all(contentToCache.map(async (url) => {
+        try {
+          await cache.add(url);
+        } catch (err) {
+          console.warn(`[Service Worker] Skipped pre-cache for ${url}:`, err);
+        }
+      }));
+    })());
+});
+
+self.addEventListener('activate', function (e) {
+    // Drop caches from prior deployments so a stale wasm/data file
+    // can't survive a redeploy.
+    e.waitUntil((async function () {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((k) => k !== cacheName).map((k) => caches.delete(k)));
+      await self.clients.claim();
     })());
 });
 
 self.addEventListener('fetch', function (e) {
-    e.respondWith((async function () {
-      let response = await caches.match(e.request);
-      console.log(`[Service Worker] Fetching resource: ${e.request.url}`);
-      if (response) { return response; }
+    // Only intercept GETs. Range requests return 206 partial content —
+    // never cache those, otherwise we serve a partial wasm on the next load
+    // and the runtime crashes with "memory access out of bounds".
+    if (e.request.method !== 'GET' || e.request.headers.has('range')) return;
 
-      response = await fetch(e.request);
+    e.respondWith((async function () {
       const cache = await caches.open(cacheName);
-      console.log(`[Service Worker] Caching new resource: ${e.request.url}`);
-      cache.put(e.request, response.clone());
-      return response;
+      const cached = await cache.match(e.request);
+      if (cached) return cached;
+
+      try {
+        const response = await fetch(e.request);
+        // Only store complete, same-origin 200 responses.
+        if (response && response.status === 200 && response.type === 'basic') {
+          cache.put(e.request, response.clone());
+        }
+        return response;
+      } catch (err) {
+        const fallback = await cache.match(e.request);
+        if (fallback) return fallback;
+        throw err;
+      }
     })());
 });

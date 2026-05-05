@@ -20,9 +20,11 @@
       <div id="unity-warning"> </div>
     </div>
     <script>
+      // Cache-bust the SW URL on every build so browsers re-fetch it instead
+      // of waiting up to 24h for the automatic update check.
       window.addEventListener("load", function () {
         if ("serviceWorker" in navigator) {
-          navigator.serviceWorker.register("ServiceWorker.js");
+          navigator.serviceWorker.register("ServiceWorker.js?v=0.2");
         }
       });
 
@@ -57,11 +59,11 @@
       }
 
       var buildUrl = "Build";
-      var loaderUrl = buildUrl + "/BullBBQ Web Build.loader.js";
+      var loaderUrl = buildUrl + "/webgl_1.3.1.loader.js";
       var config = {
-        dataUrl: buildUrl + "/BullBBQ Web Build.data.unityweb",
-        frameworkUrl: buildUrl + "/BullBBQ Web Build.framework.js.unityweb",
-        codeUrl: buildUrl + "/BullBBQ Web Build.wasm.unityweb",
+        dataUrl: buildUrl + "/webgl_1.3.1.data.unityweb",
+        frameworkUrl: buildUrl + "/webgl_1.3.1.framework.js.unityweb",
+        codeUrl: buildUrl + "/webgl_1.3.1.wasm.unityweb",
         streamingAssetsUrl: "StreamingAssets",
         companyName: "DefaultCompany",
         productName: "Bull3D_v0.3",
@@ -93,7 +95,26 @@
           progressBarFull.style.width = 100 * progress + "%";
         }).then((unityInstance) => {
           loadingBar.style.display = "none";
-        }).catch((message) => {
+          sessionStorage.removeItem("unity-load-failed");
+        }).catch(async (message) => {
+          // Self-heal once per session: if the wasm fails to load, the most
+          // common cause on a freshly-redeployed server is a poisoned
+          // ServiceWorker cache from the previous build. Unregister all SWs,
+          // drop all caches, and reload. If it still fails after the retry,
+          // fall through to the alert so we don't loop forever.
+          if (sessionStorage.getItem("unity-load-failed") !== "1") {
+            sessionStorage.setItem("unity-load-failed", "1");
+            try {
+              if ("serviceWorker" in navigator) {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(regs.map((r) => r.unregister()));
+              }
+              const keys = await caches.keys();
+              await Promise.all(keys.map((k) => caches.delete(k)));
+            } catch (e) { /* ignore */ }
+            location.reload();
+            return;
+          }
           alert(message);
         });
       };
