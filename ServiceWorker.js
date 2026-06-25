@@ -1,9 +1,9 @@
 const cacheName = "DefaultCompany-Bull3D_v0.3-0.2";
 const contentToCache = [
-    "Build/webgl_1.4.6.loader.js",
-    "Build/webgl_1.4.6.framework.js.unityweb",
-    "Build/webgl_1.4.6.data.unityweb",
-    "Build/webgl_1.4.6.wasm.unityweb",
+    "Build/webgl_1.4.7.loader.js",
+    "Build/webgl_1.4.7.framework.js.unityweb",
+    "Build/webgl_1.4.7.data.unityweb",
+    "Build/webgl_1.4.7.wasm.unityweb",
     "TemplateData/style.css"
 ];
 
